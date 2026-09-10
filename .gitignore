@@ -8,6 +8,7 @@
 *.tfstate.*
 .terraform.lock.hcl
 solucao/terraform/.kube/
+infra/terraform/mural-config
 
 # Node / misc
 node_modules/

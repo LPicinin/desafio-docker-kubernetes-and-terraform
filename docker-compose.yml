@@ -1,0 +1,66 @@
+# Compose só para entender a aplicação localmente (banco -> migração -> API -> front).
+# Usa imagens oficiais de propósito; os Dockerfiles de produção ficam em app/docker/
+# e são consumidos pelo Helm chart / Terraform, não por este arquivo.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mural
+      POSTGRES_PASSWORD: mural
+      POSTGRES_DB: mural
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mural -d mural"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://mural:mural@db:5432/mural?sslmode=disable
+    volumes:
+      - ./app/api/migrations:/migrations:ro
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        for f in /migrations/*.sql; do
+          echo "Aplicando $$f"
+          psql "$$DATABASE_URL" -f "$$f"
+        done
+
+  api:
+    image: golang:1.23-alpine
+    working_dir: /app
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://mural:mural@db:5432/mural?sslmode=disable
+      PORT: "8080"
+    volumes:
+      - ./app/api:/app
+    command: ["go", "run", "main.go"]
+
+  web:
+    image: nginx:1.27-alpine
+    depends_on:
+      - api
+    environment:
+      API_UPSTREAM: api:8080
+    volumes:
+      - ./app/web:/usr/share/nginx/html:ro
+      - ./app/web/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports:
+      - "8080:8080"
+
+volumes:
+  db_data:

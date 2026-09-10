@@ -1,0 +1,58 @@
+# Deployment + Service do front. API_UPSTREAM aponta para o Service da API
+# dentro do cluster — o nginx nunca precisa saber uma URL absoluta.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mural.fullname" . }}-web
+  labels:
+    {{- include "mural.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "mural.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "mural.selectorLabels" (dict "root" . "component" "web") | nindent 8 }}
+    spec:
+      containers:
+        - name: web
+          image: "{{ .Values.image.web.repository }}:{{ .Values.image.web.tag }}"
+          imagePullPolicy: {{ .Values.image.web.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.web.port }}
+          env:
+            - name: API_UPSTREAM
+              value: "{{ include "mural.fullname" . }}-api:{{ .Values.api.port }}"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mural.fullname" . }}-web
+  labels:
+    {{- include "mural.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  selector:
+    {{- include "mural.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.web.port }}
+      targetPort: http

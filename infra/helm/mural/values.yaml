@@ -1,0 +1,70 @@
+# Valores padrão do chart do Mural. Sobrescreva via -f/--set (o Terraform faz isso
+# passando as tags de imagem construídas localmente e o host do Ingress).
+
+image:
+  api:
+    repository: mural-api
+    tag: dev
+    pullPolicy: IfNotPresent
+  web:
+    repository: mural-web
+    tag: dev
+    pullPolicy: IfNotPresent
+  postgres:
+    repository: postgres
+    tag: 16-alpine
+    pullPolicy: IfNotPresent
+
+ingress:
+  enabled: true
+  className: traefik
+  host: mural.localtest.me
+
+# Credenciais do Postgres. Viram um Secret (nunca aparecem em texto plano em
+# Deployment/ConfigMap); só a Secret referencia estes valores.
+postgres:
+  user: mural
+  password: mural
+  database: mural
+  port: 5432
+  persistence:
+    size: 1Gi
+    storageClassName: "" # "" = usa a StorageClass default do cluster (kind: "standard")
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+api:
+  replicaCount: 2
+  port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+
+web:
+  replicaCount: 2
+  port: 8080
+  resources:
+    requests:
+      cpu: 20m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+migration:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 16Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi

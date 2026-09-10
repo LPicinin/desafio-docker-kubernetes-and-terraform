@@ -1,0 +1,13 @@
+# Conteúdo de app/api/migrations/*.sql empacotado no chart (files/migrations),
+# para o Job de migração aplicar dentro do cluster — sem imagem customizada.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mural.fullname" . }}-migrations
+  labels:
+    {{- include "mural.labels" . | nindent 4 }}
+data:
+  {{- range $path, $bytes := .Files.Glob "files/migrations/*.sql" }}
+  {{ base $path }}: |
+{{ $bytes | toString | nindent 4 }}
+  {{- end }}

@@ -1,0 +1,62 @@
+# Fricção #1 resolvida aqui: a API não cria a tabela sozinha, então este Job
+# aplica as migrations (na ordem) antes de a API conseguir ficar Ready.
+#
+# É um hook post-install/post-upgrade (não pre-install): no primeiro install o
+# StatefulSet do Postgres ainda não existiria para um hook pre-install se
+# conectar. Rodando depois, o Job espera o Postgres responder (retry de
+# pg_isready) e só então aplica o schema — enquanto isso a API sobe, fica viva
+# (liveness /healthz) mas não-Ready (readiness /readyz) até o Job terminar.
+# hook-delete-policy garante que o Job antigo é removido antes de recriar
+# (nome fixo) em cada novo `helm upgrade`/release.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "mural.fullname" . }}-migrate
+  labels:
+    {{- include "mural.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        {{- include "mural.selectorLabels" (dict "root" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.postgres.repository }}:{{ .Values.image.postgres.tag }}"
+          imagePullPolicy: {{ .Values.image.postgres.pullPolicy }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mural.fullname" . }}-db
+                  key: DATABASE_URL
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "Aguardando Postgres..."
+              until pg_isready -d "$DATABASE_URL" >/dev/null 2>&1; do
+                sleep 2
+              done
+              for f in $(ls /migrations/*.sql | sort); do
+                echo "Aplicando $f"
+                psql "$DATABASE_URL" -f "$f"
+              done
+              echo "Migrations aplicadas com sucesso."
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+              readOnly: true
+          resources:
+            {{- toYaml .Values.migration.resources | nindent 12 }}
+      volumes:
+        - name: migrations
+          configMap:
+            name: {{ include "mural.fullname" . }}-migrations
